@@ -342,7 +342,7 @@ export default class MutationBuffer {
 
     for (const n of Array.from(this.movedSet.values())) {
       if (
-        isParentRemoved(this.removes, n, this.mirror) &&
+        isParentRemoved(this.removes, n, this.mirror, this.movedSet) &&
         !this.movedSet.has(n.parentNode!)
       ) {
         continue;
@@ -353,7 +353,7 @@ export default class MutationBuffer {
     for (const n of Array.from(this.addedSet.values())) {
       if (
         !isAncestorInSet(this.droppedSet, n) &&
-        !isParentRemoved(this.removes, n, this.mirror)
+        !isParentRemoved(this.removes, n, this.mirror, this.movedSet)
       ) {
         pushAdd(n);
       } else if (isAncestorInSet(this.movedSet, n)) {
@@ -677,25 +677,30 @@ function isParentRemoved(
   removes: removedNodeMutation[],
   n: Node,
   mirror: Mirror,
+  movedSet: Set<Node>,
 ): boolean {
   if (removes.length === 0) return false;
-  return _isParentRemoved(removes, n, mirror);
+  return _isParentRemoved(removes, n, mirror, movedSet);
 }
 
 function _isParentRemoved(
   removes: removedNodeMutation[],
   n: Node,
   mirror: Mirror,
+  movedSet: Set<Node>,
 ): boolean {
   const { parentNode } = n;
   if (!parentNode) {
     return false;
   }
   const parentId = mirror.getId(parentNode);
-  if (removes.some((r) => r.id === parentId)) {
+  if (
+    removes.some((r) => r.id === parentId) &&
+    !movedSet.has(parentNode)
+  ) {
     return true;
   }
-  return _isParentRemoved(removes, parentNode, mirror);
+  return _isParentRemoved(removes, parentNode, mirror, movedSet);
 }
 
 function isAncestorInSet(set: Set<Node>, n: Node): boolean {
