@@ -11,12 +11,8 @@ import {
   generateRecordSnippet,
   ISuite,
 } from './utils';
-import {
-  recordOptions,
-  eventWithTime,
-  EventType,
-  RecordPlugin,
-} from '../src/types';
+import type { recordOptions } from '../src/types';
+import { eventWithTime, EventType, RecordPlugin } from '@rrweb/types';
 import { visitSnapshot, NodeType } from 'rrweb-snapshot';
 
 describe('record integration tests', function (this: ISuite) {
@@ -77,7 +73,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.type('textarea', 'textarea test');
     await page.select('select', '1');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -95,7 +93,9 @@ describe('record integration tests', function (this: ISuite) {
       p.appendChild(document.createElement('span'));
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -115,7 +115,9 @@ describe('record integration tests', function (this: ISuite) {
       p.innerText = 'mutated';
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -133,7 +135,9 @@ describe('record integration tests', function (this: ISuite) {
       document.body.setAttribute('test', 'true');
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -150,7 +154,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.evaluate(
       'document.getElementById("select2-drop").setAttribute("style", document.getElementById("select2-drop").style.cssText + "color:black !important")',
     );
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -184,7 +190,9 @@ describe('record integration tests', function (this: ISuite) {
 
     await waitForRAF(page);
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -195,7 +203,9 @@ describe('record integration tests', function (this: ISuite) {
 
     await page.type('.rr-ignore', 'secret');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -213,7 +223,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.type('textarea', 'textarea test');
     await page.select('select', '1');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -237,7 +249,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.type('input[type="password"]', 'password');
     await page.select('select', '1');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -254,7 +268,9 @@ describe('record integration tests', function (this: ISuite) {
 
     await page.type('input[type="password"]', 'secr3t');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -272,7 +288,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.type('textarea', 'textarea test');
     await page.select('select', '1');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -285,7 +303,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.evaluate(`document.getElementById('text').innerText = '1'`);
     await page.click('#text');
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -305,7 +325,9 @@ describe('record integration tests', function (this: ISuite) {
       nextElement.parentNode!.insertBefore(el, nextElement);
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -314,13 +336,19 @@ describe('record integration tests', function (this: ISuite) {
     await page.goto('about: blank');
     await page.setContent(getHtml.call(this, 'blocked-unblocked.html'));
 
-    const elements1 = await page.$x('/html/body/div[1]/button');
+    const elements1 = (await page.$x(
+      '/html/body/div[1]/button',
+    )) as puppeteer.ElementHandle<HTMLButtonElement>[];
     await elements1[0].click();
 
-    const elements2 = await page.$x('/html/body/div[2]/button');
+    const elements2 = (await page.$x(
+      '/html/body/div[2]/button',
+    )) as puppeteer.ElementHandle<HTMLButtonElement>[];
     await elements2[0].click();
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -338,7 +366,9 @@ describe('record integration tests', function (this: ISuite) {
       p.removeChild(span);
       div.appendChild(span);
     });
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -353,7 +383,9 @@ describe('record integration tests', function (this: ISuite) {
       document.body.appendChild(div);
       div.appendChild(span);
     });
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -362,7 +394,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.goto('about:blank');
     await page.setContent(getHtml.call(this, 'react-styled-components.html'));
     await page.click('.toggle');
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -375,7 +409,9 @@ describe('record integration tests', function (this: ISuite) {
       }),
     );
     await waitForRAF(page);
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     for (const event of snapshots) {
       if (event.type === EventType.FullSnapshot) {
         visitSnapshot(event.data.node, (n) => {
@@ -397,7 +433,9 @@ describe('record integration tests', function (this: ISuite) {
       }),
     );
     await page.waitForTimeout(50);
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -410,7 +448,9 @@ describe('record integration tests', function (this: ISuite) {
       }),
     );
     await waitForRAF(page);
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -429,7 +469,9 @@ describe('record integration tests', function (this: ISuite) {
       }
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -460,7 +502,8 @@ describe('record integration tests', function (this: ISuite) {
     await page.goto('about:blank');
     await page.setContent(
       getHtml('log.html', {
-        plugins: ('[rrwebConsoleRecord.getRecordConsolePlugin()]' as unknown) as RecordPlugin<unknown>[],
+        plugins:
+          '[rrwebConsoleRecord.getRecordConsolePlugin()]' as unknown as RecordPlugin<unknown>[],
       }),
     );
 
@@ -487,11 +530,62 @@ describe('record integration tests', function (this: ISuite) {
       document.body.appendChild(iframe);
     });
 
+    await waitForRAF(page);
     await page.frames()[1].evaluate(() => {
       console.log('from iframe');
     });
+    await waitForRAF(page);
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should handle recursive console messages', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(
+      getHtml('log.html', {
+        plugins:
+          '[rrwebConsoleRecord.getRecordConsolePlugin()]' as unknown as RecordPlugin<unknown>[],
+      }),
+    );
+
+    await page.evaluate(() => {
+      // Some frameworks like Vue.js use proxies to implement reactivity.
+      // This can cause infinite loops when logging objects.
+      let recursiveTarget = { foo: 'bar', proxied: 'i-am', proxy: null };
+      let count = 0;
+
+      const handler = {
+        get(target: any, prop: any, ...args: any[]) {
+          if (prop === 'proxied') {
+            if (count > 9) {
+              return;
+            }
+            count++; // We don't want out test to get into an infinite loop...
+            console.warn(
+              'proxied was accessed so triggering a console.warn',
+              target,
+            );
+          }
+          return Reflect.get(target, prop, ...args);
+        },
+      };
+
+      const proxy = new Proxy(recursiveTarget, handler);
+      recursiveTarget.proxy = proxy;
+
+      console.log('Proxied object:', proxy);
+    });
+
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    // The snapshots should containe 1 console log, not multiple.
     assertSnapshot(snapshots);
   });
 
@@ -508,7 +602,9 @@ describe('record integration tests', function (this: ISuite) {
 
     await page.waitForTimeout(50);
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -523,7 +619,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.waitForSelector('img'); // wait for image to get added
     await waitForRAF(page); // wait for image to be captured
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -538,7 +636,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.waitForTimeout(50); // wait for image to get added
     await waitForRAF(page); // wait for image to be captured
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -559,7 +659,9 @@ describe('record integration tests', function (this: ISuite) {
     await page.waitForTimeout(50); // wait for image to get added
     await waitForRAF(page); // wait for image to be captured
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -607,7 +709,122 @@ describe('record integration tests', function (this: ISuite) {
     });
     await page.waitForTimeout(50);
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should record shadow DOM 2', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+    await page.evaluate(() => {
+      return new Promise((resolve) => {
+        const el = document.createElement('div') as HTMLDivElement;
+        el.attachShadow({ mode: 'open' });
+        (el.shadowRoot as ShadowRoot).appendChild(
+          document.createElement('input'),
+        );
+        setTimeout(() => {
+          document.body.append(el);
+          resolve(null);
+        }, 10);
+      });
+    });
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should record shadow DOM 3', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+
+    await page.evaluate(() => {
+      const el = document.createElement('div') as HTMLDivElement;
+      el.attachShadow({ mode: 'open' });
+      (el.shadowRoot as ShadowRoot).appendChild(
+        document.createElement('input'),
+      );
+      document.body.append(el);
+    });
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should record moved shadow DOM', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+
+    await page.evaluate(() => {
+      return new Promise((resolve) => {
+        const el = document.createElement('div') as HTMLDivElement;
+        el.attachShadow({ mode: 'open' });
+        (el.shadowRoot as ShadowRoot).appendChild(
+          document.createElement('input'),
+        );
+        document.body.append(el);
+        setTimeout(() => {
+          const newEl = document.createElement('div') as HTMLDivElement;
+          document.body.append(newEl);
+          newEl.append(el);
+          resolve(null);
+        }, 50);
+      });
+    });
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should record moved shadow DOM 2', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+
+    await page.evaluate(() => {
+      const el = document.createElement('div') as HTMLDivElement;
+      el.id = 'el';
+      el.attachShadow({ mode: 'open' });
+      (el.shadowRoot as ShadowRoot).appendChild(
+        document.createElement('input'),
+      );
+      document.body.append(el);
+      (el.shadowRoot as ShadowRoot).appendChild(document.createElement('span'));
+      (el.shadowRoot as ShadowRoot).appendChild(document.createElement('p'));
+      const newEl = document.createElement('div') as HTMLDivElement;
+      newEl.id = 'newEl';
+      document.body.append(newEl);
+      newEl.append(el);
+      const input = el.shadowRoot?.children[0] as HTMLInputElement;
+      const span = el.shadowRoot?.children[1] as HTMLSpanElement;
+      const p = el.shadowRoot?.children[2] as HTMLParagraphElement;
+      input.remove();
+      span.append(input);
+      p.append(input);
+      span.append(input);
+      setTimeout(() => {
+        p.append(input);
+      }, 0);
+    });
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -616,13 +833,13 @@ describe('record integration tests', function (this: ISuite) {
     await page.goto('about:blank');
     await page.setContent(getHtml.call(this, 'frame2.html'));
 
-    await page.waitForTimeout(10); // wait till frame was added to dom
+    await page.waitForSelector('iframe'); // wait for iframe to get added
     await waitForRAF(page); // wait till browser loaded contents of frame
 
     await page.evaluate(() => {
       // get contentDocument of iframe five
-      const contentDocument1 = document.querySelector('iframe')!
-        .contentDocument!;
+      const contentDocument1 =
+        document.querySelector('iframe')!.contentDocument!;
       // create shadow dom #1
       contentDocument1.body.attachShadow({ mode: 'open' });
       contentDocument1.body.shadowRoot!.appendChild(
@@ -650,7 +867,9 @@ describe('record integration tests', function (this: ISuite) {
     });
     await waitForRAF(page); // wait till browser sent snapshots
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -678,7 +897,9 @@ describe('record integration tests', function (this: ISuite) {
     });
 
     await waitForRAF(page); // wait for snapshot to be updated
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -710,7 +931,9 @@ describe('record integration tests', function (this: ISuite) {
     });
     await waitForRAF(page); // wait till browser sent snapshots
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -750,7 +973,9 @@ describe('record integration tests', function (this: ISuite) {
     });
     await waitForRAF(page); // wait till browser sent snapshots
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -763,7 +988,9 @@ describe('record integration tests', function (this: ISuite) {
       }),
     );
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -777,7 +1004,9 @@ describe('record integration tests', function (this: ISuite) {
       }),
     );
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 
@@ -798,7 +1027,24 @@ describe('record integration tests', function (this: ISuite) {
       p.innerText = 'mutated';
     });
 
-    const snapshots = await page.evaluate('window.snapshots');
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    assertSnapshot(snapshots);
+  });
+
+  it('should record after DOMContentLoaded event', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(
+      getHtml.call(this, 'blank.html', {
+        recordAfter: 'DOMContentLoaded',
+      }),
+    );
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     assertSnapshot(snapshots);
   });
 });

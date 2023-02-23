@@ -4,6 +4,7 @@ import {
   throttle,
   on,
   hookSetter,
+  getWindowScroll,
   getWindowHeight,
   getWindowWidth,
   isBlocked,
@@ -11,9 +12,9 @@ import {
   patch,
   StyleSheetMirror,
 } from '../utils';
+import type { observerParam, MutationBufferParam } from '../types';
 import {
   mutationCallBack,
-  observerParam,
   mousemoveCallBack,
   mousePosition,
   mouseInteractionCallBack,
@@ -35,11 +36,11 @@ import {
   fontParam,
   styleDeclarationCallback,
   IWindow,
-  MutationBufferParam,
   SelectionRange,
   selectionCallback,
-} from '../types';
+} from '@rrweb/types';
 import MutationBuffer from './mutation';
+import ProcessedNodeManager from './processed-node-manager';
 
 type WindowWithStoredMutationObserver = IWindow & {
   __rrMutationObserver?: MutationObserver;
@@ -51,11 +52,7 @@ type WindowWithAngularZone = IWindow & {
 };
 
 export const mutationBuffers: MutationBuffer[] = [];
-
-const isCSSGroupingRuleSupported = typeof CSSGroupingRule !== 'undefined';
-const isCSSMediaRuleSupported = typeof CSSMediaRule !== 'undefined';
-const isCSSSupportsRuleSupported = typeof CSSSupportsRule !== 'undefined';
-const isCSSConditionRuleSupported = typeof CSSConditionRule !== 'undefined';
+export const processedNodeManager = new ProcessedNodeManager();
 
 // Event.path is non-standard and used in some older browsers
 type NonStandardEvent = Omit<Event, 'composedPath'> & {
@@ -97,19 +94,18 @@ export function initMutationObserver(
      * window.__rrMutationObserver = MutationObserver
      */
     (window as WindowWithStoredMutationObserver).__rrMutationObserver;
-  const angularZoneSymbol = (window as WindowWithAngularZone)?.Zone?.__symbol__?.(
-    'MutationObserver',
-  );
+  const angularZoneSymbol = (
+    window as WindowWithAngularZone
+  )?.Zone?.__symbol__?.('MutationObserver');
   if (
     angularZoneSymbol &&
-    ((window as unknown) as Record<string, typeof MutationObserver>)[
+    (window as unknown as Record<string, typeof MutationObserver>)[
       angularZoneSymbol
     ]
   ) {
-    mutationObserverCtor = ((window as unknown) as Record<
-      string,
-      typeof MutationObserver
-    >)[angularZoneSymbol];
+    mutationObserverCtor = (
+      window as unknown as Record<string, typeof MutationObserver>
+    )[angularZoneSymbol];
   }
   const observer = new (mutationObserverCtor as new (
     callback: MutationCallback,
@@ -280,12 +276,12 @@ export function initScrollObserver({
       return;
     }
     const id = mirror.getId(target as Node);
-    if (target === doc) {
-      const scrollEl = (doc.scrollingElement || doc.documentElement)!;
+    if (target === doc && doc.defaultView) {
+      const scrollLeftTop = getWindowScroll(doc.defaultView);
       scrollCb({
         id,
-        x: scrollEl.scrollLeft,
-        y: scrollEl.scrollTop,
+        x: scrollLeftTop.left,
+        y: scrollLeftTop.top,
       });
     } else {
       scrollCb({
@@ -426,9 +422,9 @@ function initInputObserver({
     }
   }
   const events = sampling.input === 'last' ? ['change'] : ['input', 'change'];
-  const handlers: Array<
-    listenerHandler | hookResetter
-  > = events.map((eventName) => on(eventName, eventHandler, doc));
+  const handlers: Array<listenerHandler | hookResetter> = events.map(
+    (eventName) => on(eventName, eventHandler, doc),
+  );
   const currentWindow = doc.defaultView;
   if (!currentWindow) {
     return () => {
@@ -486,13 +482,13 @@ function getNestedCSSRulePositions(rule: CSSRule): number[] {
   const positions: number[] = [];
   function recurse(childRule: CSSRule, pos: number[]) {
     if (
-      (isCSSGroupingRuleSupported &&
+      (hasNestedCSSRule('CSSGroupingRule') &&
         childRule.parentRule instanceof CSSGroupingRule) ||
-      (isCSSMediaRuleSupported &&
+      (hasNestedCSSRule('CSSMediaRule') &&
         childRule.parentRule instanceof CSSMediaRule) ||
-      (isCSSSupportsRuleSupported &&
+      (hasNestedCSSRule('CSSSupportsRule') &&
         childRule.parentRule instanceof CSSSupportsRule) ||
-      (isCSSConditionRuleSupported &&
+      (hasNestedCSSRule('CSSConditionRule') &&
         childRule.parentRule instanceof CSSConditionRule)
     ) {
       const rules = Array.from(
@@ -536,6 +532,13 @@ function initStyleSheetObserver(
   { styleSheetRuleCb, mirror, stylesheetManager }: observerParam,
   { win }: { win: IWindow },
 ): listenerHandler {
+  if (!win.CSSStyleSheet || !win.CSSStyleSheet.prototype) {
+    // If, for whatever reason, CSSStyleSheet is not available, we skip the observation of stylesheets.
+    return () => {
+      // Do nothing
+    };
+  }
+
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const insertRule = win.CSSStyleSheet.prototype.insertRule;
   win.CSSStyleSheet.prototype.insertRule = function (
@@ -634,20 +637,20 @@ function initStyleSheetObserver(
   const supportedNestedCSSRuleTypes: {
     [key: string]: GroupingCSSRuleTypes;
   } = {};
-  if (isCSSGroupingRuleSupported) {
+  if (canMonkeyPatchNestedCSSRule('CSSGroupingRule')) {
     supportedNestedCSSRuleTypes.CSSGroupingRule = win.CSSGroupingRule;
   } else {
     // Some browsers (Safari) don't support CSSGroupingRule
     // https://caniuse.com/?search=cssgroupingrule
     // fall back to monkey patching classes that would have inherited from CSSGroupingRule
 
-    if (isCSSMediaRuleSupported) {
+    if (canMonkeyPatchNestedCSSRule('CSSMediaRule')) {
       supportedNestedCSSRuleTypes.CSSMediaRule = win.CSSMediaRule;
     }
-    if (isCSSConditionRuleSupported) {
+    if (canMonkeyPatchNestedCSSRule('CSSConditionRule')) {
       supportedNestedCSSRuleTypes.CSSConditionRule = win.CSSConditionRule;
     }
-    if (isCSSSupportsRuleSupported) {
+    if (canMonkeyPatchNestedCSSRule('CSSSupportsRule')) {
       supportedNestedCSSRuleTypes.CSSSupportsRule = win.CSSSupportsRule;
     }
   }
@@ -887,12 +890,8 @@ function initMediaInteractionObserver({
       ) {
         return;
       }
-      const {
-        currentTime,
-        volume,
-        muted,
-        playbackRate,
-      } = target as HTMLMediaElement;
+      const { currentTime, volume, muted, playbackRate } =
+        target as HTMLMediaElement;
       mediaInteractionCb({
         type,
         id: mirror.getId(target as Node),
@@ -927,7 +926,7 @@ function initFontObserver({ fontCb, doc }: observerParam): listenerHandler {
   const fontMap = new WeakMap<FontFace, fontParam>();
 
   const originalFontFace = win.FontFace;
-  win.FontFace = (function FontFace(
+  win.FontFace = function FontFace(
     family: string,
     source: string | ArrayBufferLike,
     descriptors?: FontFaceDescriptors,
@@ -943,7 +942,7 @@ function initFontObserver({ fontCb, doc }: observerParam): listenerHandler {
           : JSON.stringify(Array.from(new Uint8Array(source))),
     });
     return fontFace;
-  } as unknown) as typeof FontFace;
+  } as unknown as typeof FontFace;
 
   const restoreHandler = patch(
     doc.fonts,
@@ -1158,4 +1157,25 @@ export function initObservers(
     selectionObserver();
     pluginHandlers.forEach((h) => h());
   };
+}
+
+type CSSGroupingProp =
+  | 'CSSGroupingRule'
+  | 'CSSMediaRule'
+  | 'CSSSupportsRule'
+  | 'CSSConditionRule';
+
+function hasNestedCSSRule(prop: CSSGroupingProp): boolean {
+  return typeof window[prop] !== 'undefined';
+}
+
+function canMonkeyPatchNestedCSSRule(prop: CSSGroupingProp): boolean {
+  return Boolean(
+    typeof window[prop] !== 'undefined' &&
+      // Note: Generally, this check _shouldn't_ be necessary
+      // However, in some scenarios (e.g. jsdom) this can sometimes fail, so we check for it here
+      window[prop].prototype &&
+      'insertRule' in window[prop].prototype &&
+      'deleteRule' in window[prop].prototype,
+  );
 }

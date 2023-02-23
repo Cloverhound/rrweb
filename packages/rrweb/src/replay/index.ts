@@ -31,16 +31,15 @@ import * as mittProxy from 'mitt';
 import { polyfill as smoothscrollPolyfill } from './smoothscroll';
 import { Timer } from './timer';
 import { createPlayerService, createSpeedService } from './machine';
+import type { playerConfig, missingNodeMap } from '../types';
 import {
   EventType,
   IncrementalSource,
   fullSnapshotEvent,
   eventWithTime,
   MouseInteractions,
-  playerConfig,
   playerMetaData,
   viewportResizeDimension,
-  missingNodeMap,
   addedNodeMutation,
   incrementalSnapshotEvent,
   incrementalData,
@@ -63,7 +62,7 @@ import {
   styleSheetRuleData,
   styleDeclarationData,
   adoptedStyleSheetData,
-} from '../types';
+} from '@rrweb/types';
 import {
   polyfill,
   queueToResolveTrees,
@@ -150,6 +149,9 @@ export class Replayer {
   private mousePos: mouseMovePos | null = null;
   private touchActive: boolean | null = null;
 
+  // Keep the rootNode of the last hovered element. So  when hovering a new element, we can remove the last hovered element's :hover style.
+  private lastHoveredRootNode: Document | ShadowRoot;
+
   // In the fast-forward mode, only the last selection data needs to be applied.
   private lastSelectionData: selectionData | null = null;
 
@@ -185,6 +187,7 @@ export class Replayer {
       pauseAnimation: true,
       mouseTail: defaultMouseTailConfig,
       useVirtualDom: true, // Virtual-dom optimization is enabled by default.
+      logger: console,
     };
     this.config = Object.assign({}, defaultConfig, config);
 
@@ -199,7 +202,7 @@ export class Replayer {
      * Exposes mirror to the plugins
      */
     for (const plugin of this.config.plugins || []) {
-      if (plugin.getMirror) plugin.getMirror(this.mirror);
+      if (plugin.getMirror) plugin.getMirror({ nodeMirror: this.mirror });
     }
 
     this.emitter.on(ReplayerEvents.Flush, () => {
@@ -231,14 +234,24 @@ export class Replayer {
             else if (data.source === IncrementalSource.StyleDeclaration)
               this.applyStyleDeclaration(data, styleSheet);
           },
+          afterAppend: (node: Node, id: number) => {
+            for (const plugin of this.config.plugins || []) {
+              if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
+            }
+          },
         };
-        this.iframe.contentDocument &&
-          diff(
-            this.iframe.contentDocument,
-            this.virtualDom,
-            replayerHandler,
-            this.virtualDom.mirror,
-          );
+        if (this.iframe.contentDocument)
+          try {
+            diff(
+              this.iframe.contentDocument,
+              this.virtualDom,
+              replayerHandler,
+              this.virtualDom.mirror,
+            );
+          } catch (e) {
+            console.warn(e);
+          }
+
         this.virtualDom.destroyTree();
         this.usingVirtualDom = false;
 
@@ -260,9 +273,7 @@ export class Replayer {
               );
               value.node = realNode;
             } catch (error) {
-              if (this.config.showWarning) {
-                console.warn(error);
-              }
+              this.warn(error);
             }
           }
         }
@@ -301,7 +312,6 @@ export class Replayer {
 
     const timer = new Timer([], {
       speed: this.config.speed,
-      liveMode: this.config.liveMode,
     });
     this.service = createPlayerService(
       {
@@ -427,9 +437,10 @@ export class Replayer {
 
   public getMetaData(): playerMetaData {
     const firstEvent = this.service.state.context.events[0];
-    const lastEvent = this.service.state.context.events[
-      this.service.state.context.events.length - 1
-    ];
+    const lastEvent =
+      this.service.state.context.events[
+        this.service.state.context.events.length - 1
+      ];
     return {
       startTime: firstEvent.timestamp,
       endTime: lastEvent.timestamp,
@@ -487,7 +498,7 @@ export class Replayer {
   }
 
   public resume(timeOffset = 0) {
-    console.warn(
+    this.warn(
       `The 'resume' was deprecated in 1.0. Please use 'play' method which has the same interface.`,
     );
     this.play(timeOffset);
@@ -710,7 +721,10 @@ export class Replayer {
 
       // events are kept sorted by timestamp, check if this is the last event
       const last_index = this.service.state.context.events.length - 1;
-      if (event === this.service.state.context.events[last_index]) {
+      if (
+        !this.config.liveMode &&
+        event === this.service.state.context.events[last_index]
+      ) {
         const finish = () => {
           if (last_index < this.service.state.context.events.length - 1) {
             // more events have been added since the setTimeout
@@ -720,18 +734,16 @@ export class Replayer {
           this.service.send('END');
           this.emitter.emit(ReplayerEvents.Finish);
         };
+        let finish_buffer = 50; // allow for checking whether new events aren't just about to be loaded in
         if (
           event.type === EventType.IncrementalSnapshot &&
           event.data.source === IncrementalSource.MouseMove &&
           event.data.positions.length
         ) {
-          // defer finish event if the last event is a mouse move
-          setTimeout(() => {
-            finish();
-          }, Math.max(0, -event.data.positions[0].timeOffset + 50)); // Add 50 to make sure the timer would check the last mousemove event. Otherwise, the timer may be stopped by the service before checking the last event.
-        } else {
-          finish();
+          // extend finish event if the last event is a mouse move so that the timer isn't stopped by the service before checking the last event
+          finish_buffer += Math.max(0, -event.data.positions[0].timeOffset);
         }
+        setTimeout(finish, finish_buffer);
       }
 
       this.emitter.emit(ReplayerEvents.EventCast, event);
@@ -744,10 +756,10 @@ export class Replayer {
     isSync = false,
   ) {
     if (!this.iframe.contentDocument) {
-      return console.warn('Looks like your replayer has been destroyed.');
+      return this.warn('Looks like your replayer has been destroyed.');
     }
     if (Object.keys(this.legacy_missingNodeRetryMap).length) {
-      console.warn(
+      this.warn(
         'Found unresolved missing node map',
         this.legacy_missingNodeRetryMap,
       );
@@ -765,6 +777,7 @@ export class Replayer {
       }
     };
 
+    this.mirror.reset();
     rebuild(event.data.node, {
       doc: this.iframe.contentDocument,
       afterAppend,
@@ -846,7 +859,7 @@ export class Replayer {
     const collected: AppendedIframe[] = [];
     const afterAppend = (builtNode: Node, id: number) => {
       this.collectIframeAndAttachDocument(collected, builtNode);
-      const sn = (mirror as TMirror).getMeta((builtNode as unknown) as TNode);
+      const sn = (mirror as TMirror).getMeta(builtNode as unknown as TNode);
       if (
         sn?.type === NodeType.Element &&
         sn?.tagName.toUpperCase() === 'HTML'
@@ -858,6 +871,8 @@ export class Replayer {
         );
       }
 
+      // Skip the plugin onBuild callback in the virtual dom mode
+      if (this.usingVirtualDom) return;
       for (const plugin of this.config.plugins || []) {
         if (plugin.onBuild)
           plugin.onBuild(builtNode, {
@@ -1217,13 +1232,13 @@ export class Replayer {
         }
         const mediaEl = target as HTMLMediaElement | RRMediaElement;
         try {
-          if (d.currentTime) {
+          if (d.currentTime !== undefined) {
             mediaEl.currentTime = d.currentTime;
           }
-          if (d.volume) {
+          if (d.volume !== undefined) {
             mediaEl.volume = d.volume;
           }
-          if (d.muted) {
+          if (d.muted !== undefined) {
             mediaEl.muted = d.muted;
           }
           if (d.type === MediaInteractions.Pause) {
@@ -1240,12 +1255,10 @@ export class Replayer {
             mediaEl.playbackRate = d.playbackRate;
           }
         } catch (error) {
-          if (this.config.showWarning) {
-            console.warn(
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
-              `Failed to replay media interactions: ${error.message || error}`,
-            );
-          }
+          this.warn(
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
+            `Failed to replay media interactions: ${error.message || error}`,
+          );
         }
         break;
       }
@@ -1254,9 +1267,9 @@ export class Replayer {
         if (this.usingVirtualDom) {
           if (d.styleId) this.constructedStyleMutations.push(d);
           else if (d.id)
-            (this.virtualDom.mirror.getNode(
-              d.id,
-            ) as RRStyleElement | null)?.rules.push(d);
+            (
+              this.virtualDom.mirror.getNode(d.id) as RRStyleElement | null
+            )?.rules.push(d);
         } else this.applyStyleSheetMutation(d);
         break;
       }
@@ -1302,9 +1315,7 @@ export class Replayer {
           );
           this.iframe.contentDocument?.fonts.add(fontFace);
         } catch (error) {
-          if (this.config.showWarning) {
-            console.warn(error);
-          }
+          this.warn(error);
         }
         break;
       }
@@ -1342,9 +1353,7 @@ export class Replayer {
             );
             if (virtualNode) value.node = virtualNode;
           } catch (error) {
-            if (this.config.showWarning) {
-              console.warn(error);
-            }
+            this.warn(error);
           }
         }
       }
@@ -1425,7 +1434,7 @@ export class Replayer {
 
     const appendNode = (mutation: addedNodeMutation) => {
       if (!this.iframe.contentDocument) {
-        return console.warn('Looks like your replayer has been destroyed.');
+        return this.warn('Looks like your replayer has been destroyed.');
       }
       let parent: Node | null | ShadowRoot | RRNode = mirror.getNode(
         mutation.parentId,
@@ -1475,6 +1484,8 @@ export class Replayer {
         return;
       }
       const afterAppend = (node: Node | RRNode, id: number) => {
+        // Skip the plugin onBuild callback for virtual dom
+        if (this.usingVirtualDom) return;
         for (const plugin of this.config.plugins || []) {
           if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
         }
@@ -1525,6 +1536,30 @@ export class Replayer {
             parent.removeChild(c as Node & RRNode);
           }
         }
+      } else if (parentSn?.type === NodeType.Document) {
+        /**
+         * Sometimes the document object is changed or reopened and the MutationObserver is disconnected, so the removal of child elements can't be detected and recorded.
+         * After the change of document, we may get another mutation which adds a new doctype or a HTML element, while the old one still exists in the dom.
+         * So, we need to remove the old one first to avoid collision.
+         */
+        const parentDoc = parent as Document | RRDocument;
+        /**
+         * To detect the exist of the old doctype before adding a new doctype.
+         * We need to remove the old doctype before adding the new one. Otherwise, code will throw "mutation Failed to execute 'insertBefore' on 'Node': Only one doctype on document allowed".
+         */
+        if (
+          mutation.node.type === NodeType.DocumentType &&
+          parentDoc.childNodes[0]?.nodeType === Node.DOCUMENT_TYPE_NODE
+        )
+          parentDoc.removeChild(parentDoc.childNodes[0] as Node & RRNode);
+        /**
+         * To detect the exist of the old HTML element before adding a new HTML element.
+         * The reason is similar to the above. One document only allows exactly one DocType and one HTML Element.
+         */
+        if (target.nodeName === 'HTML' && parentDoc.documentElement)
+          parentDoc.removeChild(
+            parentDoc.documentElement as HTMLElement & RRNode,
+          );
       }
 
       if (previous && previous.nextSibling && previous.nextSibling.parentNode) {
@@ -1539,15 +1574,6 @@ export class Replayer {
           ? (parent as TNode).insertBefore(target as TNode, next as TNode)
           : (parent as TNode).insertBefore(target as TNode, null);
       } else {
-        /**
-         * Sometimes the document changes and the MutationObserver is disconnected, so the removal of child elements can't be detected and recorded. After the change of document, we may get another mutation which adds a new html element, while the old html element still exists in the dom, and we need to remove the old html element first to avoid collision.
-         */
-        if (parent === targetDoc) {
-          while (targetDoc.firstChild) {
-            (targetDoc as TNode).removeChild(targetDoc.firstChild as TNode);
-          }
-        }
-
         (parent as TNode).appendChild(target as TNode);
       }
       /**
@@ -1704,12 +1730,10 @@ export class Replayer {
                 value,
               );
             } catch (error) {
-              if (this.config.showWarning) {
-                console.warn(
-                  'An error occurred may due to the checkout feature.',
-                  error,
-                );
-              }
+              this.warn(
+                'An error occurred may due to the checkout feature.',
+                error,
+              );
             }
           } else if (attributeName === 'style') {
             const styleValues = value;
@@ -1758,8 +1782,11 @@ export class Replayer {
       });
     } else {
       try {
-        (target as Element).scrollTop = d.y;
-        (target as Element).scrollLeft = d.x;
+        (target as Element).scrollTo({
+          top: d.y,
+          left: d.x,
+          behavior: isSync ? 'auto' : 'smooth',
+        });
       } catch (error) {
         /**
          * Seldomly we may found scroll target was removed before
@@ -1893,10 +1920,10 @@ export class Replayer {
     styleSheet: CSSStyleSheet,
   ) {
     if (data.set) {
-      const rule = (getNestedRule(
+      const rule = getNestedRule(
         styleSheet.rules,
         data.index,
-      ) as unknown) as CSSStyleRule;
+      ) as unknown as CSSStyleRule;
       rule.style.setProperty(
         data.set.property,
         data.set.value,
@@ -1905,10 +1932,10 @@ export class Replayer {
     }
 
     if (data.remove) {
-      const rule = (getNestedRule(
+      const rule = getNestedRule(
         styleSheet.rules,
         data.index,
-      ) as unknown) as CSSStyleRule;
+      ) as unknown as CSSStyleRule;
       rule.style.removeProperty(data.remove.property);
     }
   }
@@ -1954,7 +1981,8 @@ export class Replayer {
         .filter((style) => style !== null) as CSSStyleSheet[];
       if (hasShadowRoot(targetHost))
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets = stylesToAdopt;
+        (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
+          stylesToAdopt;
       else if (targetHost.nodeName === '#document')
         (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
 
@@ -2066,11 +2094,12 @@ export class Replayer {
   }
 
   private hoverElements(el: Element) {
-    this.iframe.contentDocument
+    (this.lastHoveredRootNode || this.iframe.contentDocument)
       ?.querySelectorAll('.\\:hover')
       .forEach((hoveredEl) => {
         hoveredEl.classList.remove(':hover');
       });
+    this.lastHoveredRootNode = el.getRootNode() as Document | ShadowRoot;
     let currentEl: Element | null = el;
     while (currentEl) {
       if (currentEl.classList) {
@@ -2119,20 +2148,20 @@ export class Replayer {
      * is microtask, so events fired on a removed DOM may emit
      * snapshots in the reverse order.
      */
-    this.debug(REPLAY_CONSOLE_PREFIX, `Node with id '${id}' not found. `, d);
+    this.debug(`Node with id '${id}' not found. `, d);
   }
 
   private warn(...args: Parameters<typeof console.warn>) {
     if (!this.config.showWarning) {
       return;
     }
-    console.warn(REPLAY_CONSOLE_PREFIX, ...args);
+    this.config.logger.warn(REPLAY_CONSOLE_PREFIX, ...args);
   }
 
   private debug(...args: Parameters<typeof console.log>) {
     if (!this.config.showDebug) {
       return;
     }
-    console.log(REPLAY_CONSOLE_PREFIX, ...args);
+    this.config.logger.log(REPLAY_CONSOLE_PREFIX, ...args);
   }
 }
